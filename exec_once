@@ -1,0 +1,41 @@
+#!/bin/bash
+
+# Exit on error
+set -e
+
+# Store the command to be executed
+cmd=$@
+
+# Create a temporary file path based on the command
+# Replacing all characters other than a-z, A-Z, 0-9, and '-' with '_'
+tmp_file=/tmp/exec_once-$(echo $cmd | tr -c 'a-zA-Z0-9-' '_')
+
+if pgrep -f "exec_once $cmd" | grep -v "$$" >/dev/null
+then
+    # If the command is running, display the last 10 lines of the temporary file
+    # and keep the process running in the background
+    tail -n 10 -f $tmp_file &
+    tail_pid=$!
+
+    # Start a subshell process to exit once the temporary file is deleted
+    (
+      while [ -e "$tmp_file" ]; do
+        sleep 1
+      done
+      # Kill the tail process when the temporary file is deleted
+      kill $tail_pid
+    ) &
+
+    # Kill the tail process when the temporary file is deleted
+    trap "kill $tail_pid ; kill $!" EXIT
+
+   # Keep running until the tail process exits
+    wait $tail_pid
+else
+    # If the command is not running, set a trap to remove the temporary file
+    # when the script exits
+    trap "rm $tmp_file" EXIT
+
+    # Run the command and save its output to the temporary file, displaying it as well
+    $cmd | tee $tmp_file
+fi
